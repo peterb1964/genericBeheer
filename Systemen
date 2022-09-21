@@ -1,0 +1,14 @@
+saltmaster 192.168.122.15	my.local
+
+www01 192.168.122.101	my.local
+www02 192.168.122.102	my.local
+
+app01 192.168.122.111	my.local
+app02 192.168.122.112	my.local
+
+db01 192.168.122.121	my.local
+db02 192.168.122.122	my.local
+
+hadmstr 192.168.122.200	hadoop.local
+hadsl01 192.168.122.211	hadoop.local
+hadsl02 192.168.122.212	hadoop.local
