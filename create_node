@@ -1,0 +1,139 @@
+#!/usr/bin/bash
+# Simple script to make a new debian node, I used it to control my salt
+# environment.
+# The template-qcow had: salt-minion installed
+# the rest was in the init-file and templates of my salt-master
+
+###########################################################################
+
+s_base="deb112templ"  # the name of the node which is acting as the template
+f_log=./logFile.txt
+f_in="in_ene.systemen"
+f_static="/etc/network/interfaces"
+
+###########################################################################
+
+logMe() {
+	stat=$1
+	shift
+	echo "[$( date '+%Y-%d-%d %H:%M:%S' )] - $stat - $*" | tee -a /dev/tty >> ${f_log}
+}
+
+zetStaticIP() { # Be aware that the syntax of the IP-address is not checked
+
+echo "# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+source /etc/network/interfaces.d/*
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# The primary network interface, originele shit
+allow-hotplug enp1s0
+iface enp1s0 inet static
+ address	${1}
+ netmask	255.255.255.0
+ gateway	192.168.122.1
+ dns-nameservers	0.0.0.0" > ${f_static}
+}
+
+restartNetwork() {
+	logMe INFO "herstarten van het netwerk..."
+	systemctl restart networking.service
+}
+
+# Not used anymore, however it did work
+#do_vgrename() {
+#	repl=$2
+#	repl='system'
+#	vgrename ${s_base}-vg ${repl}-vg && logMe OK "vgrename ${s_base}-vg ${repl}-vg" || logMe FOUT "vgrename ${s_base}-vg ${repl}-vg"
+#	
+#	for file in /boot/grub/grub.cfg /etc/fstab /etc/initramfs-tools/conf.d/resume
+#	do
+#		logMe INFO "vgrename aanpassingen in :: $file"
+#		sed -i "s/${s_base}/${repl}/g" ${file} && logMe OK "aanpassing $file" || logMe FOUT "Aanpassing $file"
+#	done
+#
+#	logMe INFO "update_initramfs."
+#	update-initramfs -u -k all && logMe OK "update-initramfs -u -k all" || logMe FOUT " update-initramfs -u -k all"
+#}
+
+theEnd() {
+	logMe EINDE "Closing script..."
+}
+
+###########################################################################
+trap "theEnd" 0 1 2 3 4 5 10 11 12 15
+###########################################################################
+
+clear
+
+logMe START "Starting script.."
+
+[ "$( hostname )" = "${s_base}" ] || {
+	logMe INCORRECT "$(basename $0 ) should only run once"
+	exit 101
+}
+# initiele gebeuren
+
+PS3="Select hostname: "
+select name in $( awk '{print $1}' ${f_in} ) exit
+do
+	[ "${name}" ] && break
+done
+
+ipaddress=$( grep "^${name}" ${f_in} | awk '{print $2}' )
+teGebrDomain=$( grep "^${name}" ${f_in} | awk '{print $3}' )
+[ $name = "exit" ] && exit 0
+[ "$ipaddress" -a "$name" -a "$teGebrDomain" ] && logMe OK "Variabelen zijn gezet" || {
+	logMe FOUT "Niet alle variabelen zijn gezet"
+	exit 1
+}
+
+hostnamectl set-hostname ${name}.${teGebrDomain} && logMe OK "hostname is been set" || {
+	logMe FOUT "hostname is not been set"
+	exit 2
+}
+
+for file in /etc/hosts /etc/salt/minion 
+do
+	logMe INFO "start met file($file)"
+	sed -i "s/${s_base}/${name}/g" ${file} && logMe OK "updating file($file)" || {
+		logMe FOUT "updating file($file)"
+		exit 3
+	}
+done
+logMe INFO "updating minion_id file"
+echo ${name}.${teGebrDomain} > /etc/salt/minion_id
+
+logMe INFO "Set the ip-address"
+zetStaticIP ${ipaddress}
+logMe INFO "Restart network"
+restartNetwork
+
+logMe INFO "updating /etc/hosts"
+sed -i "s/${s_base}/${name}/g" /etc/hosts
+echo "${ipaddress} ${name} ${name}.${teGebrDomain}" >> /etc/hosts
+
+logMe INFO "Reconfigure system ssh keys"
+cd /etc/ssh		# reconfigureren van de lokale ssh meuk
+rm ssh_host*
+dpkg-reconfigure openssh-server && {
+	status="succeeded"
+	logMe $lm_stat "Reconfig of dpkg-reconfigure of openssh-server has, $status"
+} || {
+	status="failed, I quit"
+	logMe ERROR "Reconfig of dpkg-reconfigure of openssh-server has, $status"
+	exit 4
+}
+
+# currently I change the name within the function to: system-vg
+# do_vgrename ${s_base} ${name}
+
+logMe INFO "enabling salt-minion (not starting)"
+systemctl enable salt-minion && logMe OK "enabling salt-minion, SUCCEEDED" \
+	|| logMe ERROR "enabling salt-minion, FAILED"
+
+exit
