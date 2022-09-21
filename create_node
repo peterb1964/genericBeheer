@@ -1,14 +1,12 @@
 #!/usr/bin/bash
-# Simple script to make a new debian node, I used it to control my salt
-# environment.
-# The template-qcow had: salt-minion installed
-# the rest was in the init-file and templates of my salt-master
-
+# be aware:
+# the name of the node which is acting as the template, change this to the
+# hostname of the template-node
 ###########################################################################
 
-s_base="deb112templ"  # the name of the node which is acting as the template
+s_base="deb112templ"  
 f_log=./logFile.txt
-f_in="in_ene.systemen"
+f_in="./Systemen"
 f_static="/etc/network/interfaces"
 
 ###########################################################################
@@ -19,7 +17,7 @@ logMe() {
 	echo "[$( date '+%Y-%d-%d %H:%M:%S' )] - $stat - $*" | tee -a /dev/tty >> ${f_log}
 }
 
-zetStaticIP() { # Be aware that the syntax of the IP-address is not checked
+setStaticIP() { # Be aware that the syntax of the IP-address is not checked
 
 echo "# This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
@@ -87,21 +85,21 @@ done
 ipaddress=$( grep "^${name}" ${f_in} | awk '{print $2}' )
 teGebrDomain=$( grep "^${name}" ${f_in} | awk '{print $3}' )
 [ $name = "exit" ] && exit 0
-[ "$ipaddress" -a "$name" -a "$teGebrDomain" ] && logMe OK "Variabelen zijn gezet" || {
-	logMe FOUT "Niet alle variabelen zijn gezet"
+[ "$ipaddress" -a "$name" -a "$teGebrDomain" ] && logMe OK "Variabels are set" || {
+	logMe FALSE "Not all variabels are set"
 	exit 1
 }
 
 hostnamectl set-hostname ${name}.${teGebrDomain} && logMe OK "hostname is been set" || {
-	logMe FOUT "hostname is not been set"
+	logMe FALSE "hostname is not been set"
 	exit 2
 }
 
 for file in /etc/hosts /etc/salt/minion 
 do
-	logMe INFO "start met file($file)"
+	logMe INFO "start with file($file)"
 	sed -i "s/${s_base}/${name}/g" ${file} && logMe OK "updating file($file)" || {
-		logMe FOUT "updating file($file)"
+		logMe FALSE "updating file($file)"
 		exit 3
 	}
 done
@@ -109,7 +107,7 @@ logMe INFO "updating minion_id file"
 echo ${name}.${teGebrDomain} > /etc/salt/minion_id
 
 logMe INFO "Set the ip-address"
-zetStaticIP ${ipaddress}
+setStaticIP ${ipaddress}
 logMe INFO "Restart network"
 restartNetwork
 
@@ -117,23 +115,25 @@ logMe INFO "updating /etc/hosts"
 sed -i "s/${s_base}/${name}/g" /etc/hosts
 echo "${ipaddress} ${name} ${name}.${teGebrDomain}" >> /etc/hosts
 
-logMe INFO "Reconfigure system ssh keys"
-cd /etc/ssh		# reconfigureren van de lokale ssh meuk
+logMe INFO "Reconfigure local ssh credentials"
+cd /etc/ssh		# reconfigurere local openssh credentials
 rm ssh_host*
 dpkg-reconfigure openssh-server && {
-	status="succeeded"
-	logMe $lm_stat "Reconfig of dpkg-reconfigure of openssh-server has, $status"
+	logMe OK "Reconfig of dpkg-reconfigure of openssh-server has, succeeded"
 } || {
-	status="failed, I quit"
-	logMe ERROR "Reconfig of dpkg-reconfigure of openssh-server has, $status"
+	logMe FALSE "Reconfig of dpkg-reconfigure of openssh-server has, failed, I quit"
 	exit 4
 }
 
+# I have taken this out, it works but, if you rename the vg on the template, which I 
+# did, to system. This little trick ain't necessary
 # currently I change the name within the function to: system-vg
 # do_vgrename ${s_base} ${name}
 
 logMe INFO "enabling salt-minion (not starting)"
 systemctl enable salt-minion && logMe OK "enabling salt-minion, SUCCEEDED" \
-	|| logMe ERROR "enabling salt-minion, FAILED"
+	|| logMe FALSE "enabling salt-minion, FAILED"
 
-exit
+reboot now
+
+exit 0
