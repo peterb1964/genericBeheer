@@ -4,7 +4,7 @@
 
 s_base="deb12T"
 f_log=./logFile.txt
-f_in="in_ene.straten"
+f_in="Systemen"
 f_grains="/etc/salt/minion.d/grains.conf"
 
 ###########################################################################
