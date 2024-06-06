@@ -1,0 +1,156 @@
+#!/usr/bin/bash -x
+
+###########################################################################
+
+s_base="deb12T"
+f_log=./logFile.txt
+f_in="in_ene.straten"
+f_grains="/etc/salt/minion.d/grains.conf"
+
+###########################################################################
+
+logMe() {
+	stat=$1
+	date=$( date '+%Y-%d-%d %H:%M:%S' )
+	shift
+	echo "[${date}] - $stat - $*"
+	echo "[${date}] - $stat - $*" >> ${f_log}
+}
+
+zetStaticIP() {
+	f_static="/etc/network/interfaces"
+	logMe INFO "Aanpassing interfaces file"
+	sed -i "s/dhcp/static/
+	s/allow-hotplug/auto/" ${f_static}
+	logMe INFO "appenden ${f_static}"
+	echo "  address  $1
+  netmask  255.255.255.0
+  gateway  192.168.122.1" >> ${f_static}
+}
+
+restartNetwork() {
+	logMe INFO "herstarten van het netwerk..."
+	systemctl restart networking.service
+}
+
+do_vgrename() {
+	replace=$2
+	replace=system
+
+	logMe INFO "renamen van VG"
+	#vgrename ${s_base}-vg ${replace}-vg && logMe OK "vgrename ${s_base}-vg ${replace}-vg" || logMe FOUT "vgrename ${s_base}-vg ${replace}-vg"
+	vgrename ${s_base}-vg ${replace} && logMe OK "vgrename ${s_base}-vg ${replace}" || logMe FOUT "vgrename ${s_base}-vg ${replace}"
+	
+	for file in /boot/grub/grub.cfg /etc/fstab /etc/initramfs-tools/conf.d/resume
+	do
+		logMe INFO "vgrename aanpassingen in :: $file"
+		sed -i "s/${s_base}/${replace}/g" ${file} && logMe OK "Aanpassing $file" || logMe FOUT "Aanpassing $file"
+	done
+
+	logMe INFO "update_initramfs."
+	update-initramfs -u -k all && logMe OK "update-initramfs -u -k all" || logMe FOUT " update-initramfs -u -k all"
+}
+vulGrains() {
+	awk -vnode=
+}
+
+theEnd() {
+	logMe EINDE "Closing script..."
+}
+
+###########################################################################
+trap "theEnd" 0 1 2 3 4 5 10 11 12 15
+###########################################################################
+
+clear
+
+logMe START "Starting script.."
+
+[ "$1" = "-u" ] && {
+	logMe INFO "apt update"
+	apt update
+	logMe INFO "apt dist-upgrade"
+	apt dist-upgrade -y
+	logMe INFO "apt auutoremove"
+	apt autoremove -y
+
+	exit 0
+}
+
+selectInput() {
+	awk '{printf( "%s.%s ", $1, $3 ) }' ${f_in}  | grep -v '^.$'
+}
+
+[ "$( hostname )" = "${s_base}" ] && {
+	# initiele gebeuren
+
+	PS3="Select hostname: "
+	#select name in $( awk '{printf( "%s.%s", $1, $3 ) }' ${f_in} ) exit
+	select name in $( selectInput ) exit
+	do
+		[ "${name}" ] && break
+	done
+	eval $( echo ${name} | sed -n 's/^\([^\.]*\)\.\(.*\)$/_name=\1 domain=\2/p' )
+
+
+	ipaddress=$( grep "^${_name}.*${domain}" ${f_in} | awk '{print $2}' )
+	teGebrDomain=$( grep "^${_name}.*${domain}" ${f_in} | awk '{print $3}' )
+	[ -z "${ipaddress}" -o -z "${teGebrDomain}" ] && {
+		exit 100
+	}
+
+	[ $name = "exit" ] && exit 0
+	logMe INFO "Check op te zetten variabelen"
+	[ "$ipaddress" -a "$_name" -a "$teGebrDomain" ] && logMe OK "Variabelen zijn gezet" || {
+		logMe FOUT "Niet alle variabelen zijn goed gezet"
+		exit 1
+	}
+
+	logMe INFO "Zetten van de hostname"
+	hostnamectl set-hostname ${_name}.${teGebrDomain} && logMe OK "hostname is been set" || {
+		logMe FOUT "hostname is not been set"
+		exit 2
+	}
+	
+	awk -vnode=${_name} '{
+		if ( $1 == node ) {
+			printf( "grains:\n  roles:\n    - %s\n  straat: %s\n  Virtual: True\n", $5, $4 );
+		}
+	}'  ${f_in}  > ${f_grains}
+
+	for file in /etc/hosts /etc/salt/minion 
+	do
+		logMe INFO "start met file($file)"
+		sed -i "s/${s_base}/${_name}/g" ${file} && logMe OK "updating file($file)" || {
+			logMe FOUT "updating file($file)"
+			exit 3
+		}
+	done
+	logMe INFO "updating minion_id file"
+	echo ${_name}.${teGebrDomain} > /etc/salt/minion_id
+
+	logMe INFO "Set the ip-address"
+	zetStaticIP ${ipaddress}
+	logMe INFO "Restart network"
+	restartNetwork
+
+	logMe INFO "updating /etc/hosts"
+	sed -i "s/${s_base}/${_name}/g" /etc/hosts
+	echo "${ipaddress} ${_name} ${_name}.${teGebrDomain}" >> /etc/hosts
+
+	logMe INFO "Reconfigure system ssh keys"
+	cd /etc/ssh		# reconfigureren van de lokale ssh meuk
+	rm ssh_host*
+	dpkg-reconfigure openssh-server
+
+	# do_vgrename ${s_base} ${_name}
+
+	systemctl enable salt-minion
+} || {
+	exit -2
+	update-grub2
+}
+
+reboot now
+
+exit
