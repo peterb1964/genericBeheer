@@ -50,9 +50,6 @@ do_vgrename() {
 	logMe INFO "update_initramfs."
 	update-initramfs -u -k all && logMe OK "update-initramfs -u -k all" || logMe FOUT " update-initramfs -u -k all"
 }
-vulGrains() {
-	awk -vnode=
-}
 
 theEnd() {
 	logMe EINDE "Closing script..."
