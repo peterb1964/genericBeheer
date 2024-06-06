@@ -1,14 +1,15 @@
-saltmaster 192.168.122.15	my.local
-
-www01 192.168.122.101	my.local
-www02 192.168.122.102	my.local
-
-app01 192.168.122.111	my.local
-app02 192.168.122.112	my.local
-
-db01 192.168.122.121	my.local
-db02 192.168.122.122	my.local
-
-hadmstr 192.168.122.200	hadoop.local
-hadsl01 192.168.122.211	hadoop.local
-hadsl02 192.168.122.212	hadoop.local
+www1 192.168.122.100	myvms.local	dev	apache2
+www2 192.168.122.101	myvms.local	test	apache2
+app1 192.168.122.110	myvms.local	dev	tomcat
+app2 192.168.122.111	myvms.local	test	tomcat
+db1 192.168.122.120	myvms.local	dev	mariadb
+db2 192.168.122.121	myvms.local	test	mariadb
+airflow 192.168.122.150	myvms.local	dev	airflow
+test1 192.168.122.51	myvms.local	dev
+test2 192.168.122.52	myvms.local	dev
+test3 192.168.122.53	myvms.local	dev
+test4 192.168.122.54	myvms.local	dev
+test5 192.168.122.55	myvms.local	dev
+test6 192.168.122.56	myvms.local	dev
+test7 192.168.122.57	myvms.local	dev
+test8 192.168.122.58	myvms.local	dev
